@@ -57,10 +57,28 @@ func homeHandler(c http.ResponseWriter, req *http.Request, ctx *Context) {
 	http.ServeFile(c, req, filepath.Join(*assets, "index.html"))
 }
 
+// Message format
+// 1 byte message type
+// msgpack payload
+
 type Link struct {
 	Start_state string `codec:"start_state"`
 	Action      string `codec:"action"`
 	End_state   string `codec:"end_state"`
+}
+
+func (l *Link) Decode(p []byte, ctx *Context) error {
+	var dec *codec.Decoder = codec.NewDecoderBytes(p, ctx.mh)
+	err := dec.Decode(l)
+	return err
+}
+
+type Message interface {
+	Decode([]byte, *Context) error
+}
+
+func decodeMessage(p []byte, m Message, ctx *Context) error {
+	return m.Decode(p, ctx)
 }
 
 func wsHandler(w http.ResponseWriter, r *http.Request, ctx *Context) {
@@ -76,27 +94,31 @@ func wsHandler(w http.ResponseWriter, r *http.Request, ctx *Context) {
 			return
 		}
 
-		// decode msgpack here
-		var dec *codec.Decoder = codec.NewDecoderBytes(p, ctx.mh)
-		var data Link
-		err = dec.Decode(&data)
+		msg_type := p[0]
+		payload := p[1:]
 
-		if err != nil {
-			log.Println("Failed to decode data:", string(p), err)
-		}
-		_, err = ctx.db.Exec("INSERT INTO links VALUES (?, ?, ?)", data.Start_state, data.Action, data.End_state)
-		if err != nil {
-			log.Println("Failed to write data to db:", data, err)
-		}
+		if msg_type == uint8(1) {
+			m := new(Link)
+			// decode msgpack here
+			if err = decodeMessage(payload, m, ctx); err != nil {
+				log.Println("Failed to decode data:", string(p), err)
+			}
+			_, err = ctx.db.Exec("INSERT INTO links VALUES (?, ?, ?)", m.Start_state, m.Action, m.End_state)
+			if err != nil {
+				log.Println("Failed to write data to db:", m, err)
+			}
 
-		// encode msgpack here
-		var output []byte
-		var enc *codec.Encoder = codec.NewEncoderBytes(&output, ctx.mh)
-		err = enc.Encode(data)
+			// encode msgpack here
+			var output []byte
+			var enc *codec.Encoder = codec.NewEncoderBytes(&output, ctx.mh)
+			err = enc.Encode(m)
 
-		if err = ws.WriteMessage(messageType, output); err != nil {
-			fmt.Println(err)
-			return
+			// add msg_type back in
+			output = append([]byte{msg_type}, output...)
+			if err = ws.WriteMessage(messageType, output); err != nil {
+				fmt.Println(err)
+				return
+			}
 		}
 	}
 }
