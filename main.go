@@ -57,30 +57,6 @@ func homeHandler(c http.ResponseWriter, req *http.Request, ctx *Context) {
 	http.ServeFile(c, req, filepath.Join(*assets, "index.html"))
 }
 
-// Message format
-// 1 byte message type
-// msgpack payload
-
-type Link struct {
-	Start_state string `codec:"start_state"`
-	Action      string `codec:"action"`
-	End_state   string `codec:"end_state"`
-}
-
-func (l *Link) Decode(p []byte, ctx *Context) error {
-	var dec *codec.Decoder = codec.NewDecoderBytes(p, ctx.mh)
-	err := dec.Decode(l)
-	return err
-}
-
-type Message interface {
-	Decode([]byte, *Context) error
-}
-
-func decodeMessage(p []byte, m Message, ctx *Context) error {
-	return m.Decode(p, ctx)
-}
-
 func wsHandler(w http.ResponseWriter, r *http.Request, ctx *Context) {
 	ws, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
@@ -94,31 +70,18 @@ func wsHandler(w http.ResponseWriter, r *http.Request, ctx *Context) {
 			return
 		}
 
+		var output []byte
 		msg_type := p[0]
 		payload := p[1:]
 
-		if msg_type == uint8(1) {
-			m := new(Link)
-			// decode msgpack here
-			if err = decodeMessage(payload, m, ctx); err != nil {
-				log.Println("Failed to decode data:", string(p), err)
-			}
-			_, err = ctx.db.Exec("INSERT INTO links VALUES (?, ?, ?)", m.Start_state, m.Action, m.End_state)
-			if err != nil {
-				log.Println("Failed to write data to db:", m, err)
-			}
-
-			// encode msgpack here
-			var output []byte
-			var enc *codec.Encoder = codec.NewEncoderBytes(&output, ctx.mh)
-			err = enc.Encode(m)
-
-			// add msg_type back in
-			output = append([]byte{msg_type}, output...)
-			if err = ws.WriteMessage(messageType, output); err != nil {
-				fmt.Println(err)
-				return
-			}
+		switch msg_type {
+		case add_link:
+			output, _ = addLink(payload, ctx)
+		}
+		output = append([]byte{msg_type}, output...)
+		if err = ws.WriteMessage(messageType, output); err != nil {
+			fmt.Println(err)
+			return
 		}
 	}
 }
@@ -130,6 +93,13 @@ var (
 		ReadBufferSize:  1024,
 		WriteBufferSize: 1024,
 	}
+)
+
+const (
+	err        = iota // 0
+	add_link          // 1
+	send_list         // 2
+	clear_list        // 3
 )
 
 func main() {

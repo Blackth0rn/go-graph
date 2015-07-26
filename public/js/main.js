@@ -10,16 +10,17 @@ var end_state = document.getElementById('end_state');
 var send = document.getElementById('send');
 var msg_type = document.getElementById('msg_type');
 
+var const_error			= 0;
+var const_add_link		= 1;
+var const_send_list		= 2;
+var const_send_clear	= 3;
+
 send.addEventListener('click', sendMessage, false);
 
-function displayMessage(data)
+function display_add_link(data)
 {
 	span = document.createElement("span");
-	// decode msgpack here
-	msg_type = data[0];
-	packed_data = data.slice(1);
-	decoded_data = msgpack.unpack(packed_data);
-	span.innerHTML = "Msg_type: " + msg_type + " Data: " + JSON.stringify(decoded_data);
+	span.innerHTML = "Data: " + JSON.stringify(decoded_data);
 	output.appendChild(span);
 	output.appendChild(document.createElement("br"));
 }
@@ -45,15 +46,16 @@ function getInput(input_array)
 function sendMessage()
 {
 	var data = [];
-	switch(msg_type.value)
+	var type = parseInt(msg_type.value,10);
+	switch(type)
 	{
-		case "1":
+		case const_add_link:
 			data = sendLink();
 			break;
-		case "2":
+		case const_send_list:
 			data = sendList();
 			break;
-		case "3":
+		case const_send_clear:
 			data = sendClear();
 			break;
 	}
@@ -66,7 +68,7 @@ function sendMessage()
 	data_array = new Uint8Array(buffer);
 	// copy our msg_pack into our buffer, offset of 1 to leave room for the msg_type
 	data_array.set(packed_data, 1);
-	data_array.set([parseInt(msg_type.value,10)], 0);
+	data_array.set([type], 0);
 	connection.send(data_array);
 }
 
@@ -79,6 +81,23 @@ function sendLink()
 
 connection.onmessage = function(e) {
 	data = Array.from(new Uint8Array(e.data));
-	displayMessage(data);
+	msg_type = data[0];
+	packed_data = data.slice(1);
+	decoded_data = msgpack.unpack(packed_data);
+	switch(msg_type)
+	{
+		case const_error:
+			display_error(decoded_data);
+			break;
+		case const_add_link:
+			display_add_link(decoded_data);
+			break;
+		case const_send_list:
+			display_send_list(decoded_data);
+			break;
+		case const_send_clear:
+			display_send_clear(decoded_data);
+			break;
+	}
 }
 
