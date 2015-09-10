@@ -19,10 +19,28 @@ send.addEventListener('click', sendMessage, false);
 
 function display_add_link(data)
 {
+	show_link(data);
+}
+
+function show_link(data)
+{
 	span = document.createElement("span");
-	span.innerHTML = "Data: " + JSON.stringify(decoded_data);
+	span.innerHTML = "Data: " + JSON.stringify(data);
 	output.appendChild(span);
 	output.appendChild(document.createElement("br"));
+}
+
+function display_error(data)
+{
+	console.log(data);
+}
+
+function display_send_list(data)
+{
+	for( link in data['links'] )
+	{
+		show_link( data['links'][link] );
+	}
 }
 
 function clearInput()
@@ -79,12 +97,17 @@ function sendLink()
 	return data;
 }
 
+function sendList()
+{
+	return;
+}
+
 connection.onmessage = function(e) {
 	data = Array.from(new Uint8Array(e.data));
-	msg_type = data[0];
+	returned_msg_type = data[0];
 	packed_data = data.slice(1);
 	decoded_data = msgpack.unpack(packed_data);
-	switch(msg_type)
+	switch(returned_msg_type)
 	{
 		case const_error:
 			display_error(decoded_data);
